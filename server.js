@@ -1,4 +1,3 @@
-require("dotenv").config();
 const admin = require("firebase-admin");
 const webpush = require("web-push");
 const express = require("express");
@@ -267,10 +266,32 @@ app.get("/vapid-public-key", (req, res) => {
 });
 
 // ─────────────────────────────────────────
+// Self-ping toutes les 10 min pour éviter la veille Render
+// ─────────────────────────────────────────
+const https = require("https");
+const http  = require("http");
+
+function keepAlive() {
+  const url = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+  const client = url.startsWith("https") ? https : http;
+  client.get(url + "/status", (res) => {
+    console.log(`🏓 Keep-alive ping — status: ${res.statusCode}`);
+  }).on("error", (err) => {
+    console.log(`⚠️ Keep-alive ping échoué: ${err.message}`);
+  });
+}
+
+// ─────────────────────────────────────────
 // Démarrage
 // ─────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`✅ Serveur notifications démarré sur le port ${PORT}`);
   console.log(`📡 Surveillance Firebase active`);
   console.log(`👥 Abonnés chargés : ${subscriptions.length}`);
+
+  // Démarrer le keep-alive après 1 minute
+  setTimeout(() => {
+    keepAlive();
+    setInterval(keepAlive, 10 * 60 * 1000); // toutes les 10 min
+  }, 60000);
 });
