@@ -115,30 +115,78 @@ let etatPrecedent = {
   etatPompe:    null,
   etatSysteme:  null,
   niveauHaut:   null,
+  niveauMoyen:  null,
   niveauBas:    null,
 };
+
+// ─────────────────────────────────────────
+// Surveillance Firebase — niveau complet
+// Logique basée sur combinaison des 3 flotteurs
+// ─────────────────────────────────────────
+db.ref("/niveau").on("value", async (snap) => {
+  const d = snap.val() || {};
+  const haut  = d.haut  === "ON";
+  const moyen = d.moyen === "ON";
+  const bas   = d.bas   === "ON";
+
+  // Éviter les doublons
+  const signature = `${haut}-${moyen}-${bas}`;
+  if (signature === etatPrecedent.niveauSignature) return;
+  const precedent = etatPrecedent.niveauSignature;
+  etatPrecedent.niveauSignature = signature;
+
+  // Ne pas notifier au premier démarrage
+  if (precedent === undefined || precedent === null) return;
+
+  // Réservoir plein : haut=ON moyen=ON bas=ON
+  if (haut && moyen && bas) {
+    await sendNotification(
+      "🔵 Réservoir plein",
+      "Le réservoir a atteint son niveau maximum — pompe arrêtée",
+      "🔵", "niveau-plein"
+    );
+  }
+  // Niveau moyen : haut=OFF moyen=ON bas=ON
+  else if (!haut && moyen && bas) {
+    await sendNotification(
+      "🟡 Niveau moyen",
+      "Le réservoir est à moitié plein",
+      "🟡", "niveau-moyen"
+    );
+  }
+  // Niveau bas détecté : haut=OFF moyen=OFF bas=ON
+  else if (!haut && !moyen && bas) {
+    await sendNotification(
+      "🟠 Niveau bas détecté",
+      "Le réservoir est presque vide — démarrage pompe imminent",
+      "🟠", "niveau-bas"
+    );
+  }
+  // Réservoir vide → pompe déclenchée : haut=OFF moyen=OFF bas=OFF
+  else if (!haut && !moyen && !bas) {
+    await sendNotification(
+      "🚀 Démarrage pompe automatique",
+      "Le réservoir est vide — la pompe démarre automatiquement",
+      "💧", "pompe-auto-start"
+    );
+  }
+});
 
 // ─────────────────────────────────────────
 // Surveillance Firebase — etatPompe
 // ─────────────────────────────────────────
 db.ref("/etatPompe").on("value", async (snap) => {
   const val = snap.val();
-  if (val === etatPrecedent.etatPompe) return; // Pas de changement
+  if (val === etatPrecedent.etatPompe) return;
+  const precedent = etatPrecedent.etatPompe;
   etatPrecedent.etatPompe = val;
+  if (precedent === null) return; // Ignorer au démarrage
 
-  if (val === "ON") {
-    await sendNotification(
-      "🚀 Pompe démarrée",
-      "La pompe de remplissage est en marche",
-      "💧",
-      "pompe-start"
-    );
-  } else if (val === "OFF" && etatPrecedent.etatPompe !== null) {
+  if (val === "OFF") {
     await sendNotification(
       "⏹ Pompe arrêtée",
       "La pompe s'est arrêtée",
-      "💧",
-      "pompe-stop"
+      "💧", "pompe-stop"
     );
   }
 });
@@ -149,61 +197,22 @@ db.ref("/etatPompe").on("value", async (snap) => {
 db.ref("/etatSysteme").on("value", async (snap) => {
   const val = snap.val();
   if (val === etatPrecedent.etatSysteme) return;
+  const precedent = etatPrecedent.etatSysteme;
   etatPrecedent.etatSysteme = val;
+  if (precedent === null) return;
 
   if (val === false) {
     await sendNotification(
       "⚠️ Système coupé",
       "Le système de pompage a été désactivé",
-      "⚠️",
-      "systeme-off"
+      "⚠️", "systeme-off"
     );
-  } else if (val === true && etatPrecedent.etatSysteme !== null) {
+  } else if (val === true) {
     await sendNotification(
       "✅ Système activé",
       "Le système de pompage est de nouveau actif",
-      "✅",
-      "systeme-on"
+      "✅", "systeme-on"
     );
-  }
-});
-
-// ─────────────────────────────────────────
-// Surveillance Firebase — niveau haut
-// ─────────────────────────────────────────
-db.ref("/niveau/haut").on("value", async (snap) => {
-  const val = snap.val();
-  if (val === etatPrecedent.niveauHaut) return;
-  etatPrecedent.niveauHaut = val;
-
-  if (val === "ON" || val === true) {
-    await sendNotification(
-      "🔵 Réservoir plein",
-      "Le réservoir a atteint son niveau maximum",
-      "🔵",
-      "niveau-haut"
-    );
-  }
-});
-
-// ─────────────────────────────────────────
-// Surveillance Firebase — niveau bas
-// ─────────────────────────────────────────
-db.ref("/niveau/bas").on("value", async (snap) => {
-  const val = snap.val();
-  if (val === etatPrecedent.niveauBas) return;
-  etatPrecedent.niveauBas = val;
-
-  if (val === "OFF" || val === false) {
-    // Le niveau bas est repassé à OFF = réservoir vide
-    if (etatPrecedent.niveauBas !== null) {
-      await sendNotification(
-        "🟡 Réservoir vide",
-        "Le niveau bas du réservoir est atteint — démarrage auto possible",
-        "🟡",
-        "niveau-bas"
-      );
-    }
   }
 });
 
