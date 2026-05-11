@@ -2,7 +2,6 @@ const admin = require("firebase-admin");
 const webpush = require("web-push");
 const express = require("express");
 const cors = require("cors");
-const fs = require("fs");
 
 // ─────────────────────────────────────────
 // Configuration
@@ -39,31 +38,43 @@ webpush.setVapidDetails(
 );
 
 // ─────────────────────────────────────────
-// Stockage des abonnements push
-// Fichier JSON local (persiste entre redémarrages)
+// Stockage des abonnements dans Firebase
+// Persiste même après redémarrage du serveur
 // ─────────────────────────────────────────
-const SUBSCRIPTIONS_FILE = "./subscriptions.json";
+let subscriptions = [];
 
-function loadSubscriptions() {
+// Charger les abonnements depuis Firebase au démarrage
+async function loadSubscriptions() {
   try {
-    if (fs.existsSync(SUBSCRIPTIONS_FILE)) {
-      return JSON.parse(fs.readFileSync(SUBSCRIPTIONS_FILE, "utf8"));
+    const snap = await db.ref("/pushSubscriptions").once("value");
+    const data = snap.val();
+    if (data) {
+      subscriptions = Object.values(data);
+      console.log(`✅ ${subscriptions.length} abonnement(s) chargé(s) depuis Firebase`);
+    } else {
+      subscriptions = [];
+      console.log("📭 Aucun abonnement en base");
     }
   } catch (e) {
-    console.error("Erreur chargement abonnements:", e.message);
+    console.error("Erreur chargement abonnements Firebase:", e.message);
+    subscriptions = [];
   }
-  return [];
 }
 
-function saveSubscriptions(subs) {
+// Sauvegarder les abonnements dans Firebase
+async function saveSubscriptions(subs) {
   try {
-    fs.writeFileSync(SUBSCRIPTIONS_FILE, JSON.stringify(subs, null, 2));
+    // Convertir en objet avec clé unique par endpoint
+    const obj = {};
+    subs.forEach((sub, i) => {
+      const key = Buffer.from(sub.endpoint).toString("base64").slice(0, 20).replace(/[^a-zA-Z0-9]/g, "");
+      obj[key] = sub;
+    });
+    await db.ref("/pushSubscriptions").set(obj);
   } catch (e) {
-    console.error("Erreur sauvegarde abonnements:", e.message);
+    console.error("Erreur sauvegarde abonnements Firebase:", e.message);
   }
 }
-
-let subscriptions = loadSubscriptions();
 
 // ─────────────────────────────────────────
 // Fonction d'envoi de notification
@@ -293,7 +304,8 @@ function keepAlive() {
 // ─────────────────────────────────────────
 // Démarrage
 // ─────────────────────────────────────────
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
+  await loadSubscriptions(); // Charger depuis Firebase au démarrage
   console.log(`✅ Serveur notifications démarré sur le port ${PORT}`);
   console.log(`📡 Surveillance Firebase active`);
   console.log(`👥 Abonnés chargés : ${subscriptions.length}`);
