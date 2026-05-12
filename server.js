@@ -123,11 +123,12 @@ async function sendNotification(title, body, icon = "💧", tag = "pompage") {
 // État précédent pour éviter les doublons
 // ─────────────────────────────────────────
 let etatPrecedent = {
-  etatPompe:    null,
-  etatSysteme:  null,
-  niveauHaut:   null,
-  niveauMoyen:  null,
-  niveauBas:    null,
+  etatPompe:        null,
+  etatSysteme:      null,
+  niveauHaut:       null,
+  niveauMoyen:      null,
+  niveauBas:        null,
+  niveauSignature:  null, // ← initialisé à null explicitement
 };
 
 // ─────────────────────────────────────────
@@ -140,14 +141,25 @@ db.ref("/niveau").on("value", async (snap) => {
   const moyen = d.moyen === "ON";
   const bas   = d.bas   === "ON";
 
-  // Éviter les doublons
+  // Créer une signature de l'état actuel
   const signature = `${haut}-${moyen}-${bas}`;
-  if (signature === etatPrecedent.niveauSignature) return;
+
+  // Sauvegarder la valeur précédente
   const precedent = etatPrecedent.niveauSignature;
+
+  // Ne pas notifier si rien n'a changé
+  if (signature === precedent) return;
+
+  // Mettre à jour l'état précédent
   etatPrecedent.niveauSignature = signature;
 
-  // Ne pas notifier au premier démarrage
-  if (precedent === undefined || precedent === null) return;
+  // Ne pas notifier au tout premier démarrage
+  if (precedent === null) {
+    console.log(`📊 Niveaux initialisés : ${signature}`);
+    return;
+  }
+
+  console.log(`📊 Changement niveau : ${precedent} → ${signature}`);
 
   // Réservoir plein : haut=ON moyen=ON bas=ON
   if (haut && moyen && bas) {
