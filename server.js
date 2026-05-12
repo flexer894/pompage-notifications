@@ -85,11 +85,14 @@ async function sendNotification(title, body, icon = "💧", tag = "pompage") {
     return;
   }
 
+  // Ajouter timestamp au tag pour que chaque notification soit unique
+  const uniqueTag = `${tag}-${Date.now()}`;
+
   const payload = JSON.stringify({
     title,
     body,
     icon,
-    tag,
+    tag: uniqueTag,
     timestamp: new Date().toLocaleString("fr-FR")
   });
 
